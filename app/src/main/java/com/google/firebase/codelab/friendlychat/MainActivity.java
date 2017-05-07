@@ -106,9 +106,11 @@ public class MainActivity extends AppCompatActivity
     }
 
     private static final String TAG = "MainActivity";
-    public static final String MESSAGES_CHILD = "messages";
+    public static final String PUBLIC_CHILD = "public";
+    public static final String USER_CHILD = "users";
     private static final int REQUEST_INVITE = 1;
-    private static final int REQUEST_IMAGE = 2;
+    private static final int REQUEST_UPLOAD_IMAGE = 2;
+    private static final int REQUEST_PUBLISH_IMAGE = 3;
     private static final String LOADING_IMAGE_URL = "https://www.google.com/images/spin-32.gif";
     public static final int DEFAULT_MSG_LENGTH_LIMIT = 100;
     public static final String ANONYMOUS = "anonymous";
@@ -119,11 +121,16 @@ public class MainActivity extends AppCompatActivity
     private GoogleApiClient mGoogleApiClient;
     private static final String MESSAGE_URL = "http://friendlychat.firebase.google.com/message/";
 
-    private Button mSendButton;
+    private Button mUploadButton;
+    private Button mPublishButton;
     private RecyclerView mMessageRecyclerView;
     private LinearLayoutManager mLinearLayoutManager;
     private ProgressBar mProgressBar;
     private EditText mMessageEditText;
+
+    private DatabaseReference myReference;
+    private FirebaseRecyclerAdapter<FriendlyMessage, MessageViewHolder>
+            publicFirebaseAdapter;
 
     // Firebase instance variables
 
@@ -162,14 +169,14 @@ public class MainActivity extends AppCompatActivity
         mLinearLayoutManager.setStackFromEnd(true);
         mMessageRecyclerView.setLayoutManager(mLinearLayoutManager);
 
-        // New child entries
+        // get public images
         mFirebaseDatabaseReference = FirebaseDatabase.getInstance().getReference();
-        mFirebaseAdapter = new FirebaseRecyclerAdapter<FriendlyMessage,
+        publicFirebaseAdapter = new FirebaseRecyclerAdapter<FriendlyMessage,
                 MessageViewHolder>(
                 FriendlyMessage.class,
                 R.layout.item_message,
                 MessageViewHolder.class,
-                mFirebaseDatabaseReference.child(MESSAGES_CHILD)) {
+                mFirebaseDatabaseReference.child(PUBLIC_CHILD)) {
 
             @Override
             protected void populateViewHolder(final MessageViewHolder viewHolder,
@@ -219,6 +226,64 @@ public class MainActivity extends AppCompatActivity
             }
         };
 
+        // New child entries
+//        mFirebaseDatabaseReference = FirebaseDatabase.getInstance().getReference();
+        mFirebaseAdapter = new FirebaseRecyclerAdapter<FriendlyMessage,
+                MessageViewHolder>(
+                FriendlyMessage.class,
+                R.layout.item_message,
+                MessageViewHolder.class,
+                mFirebaseDatabaseReference.child(USER_CHILD).child(mFirebaseUser.getUid())) {
+
+            @Override
+            protected void populateViewHolder(final MessageViewHolder viewHolder,
+                                              FriendlyMessage friendlyMessage, int position) {
+                mProgressBar.setVisibility(ProgressBar.INVISIBLE);
+                if (friendlyMessage.getText() != null) {
+                    viewHolder.messageTextView.setText(friendlyMessage.getText());
+                    viewHolder.messageTextView.setVisibility(TextView.VISIBLE);
+                    String imageUrl = friendlyMessage.getImageUrl();
+                    if (imageUrl.startsWith("gs://")) {
+                        StorageReference storageReference = FirebaseStorage.getInstance()
+                                .getReferenceFromUrl(imageUrl);
+                        storageReference.getDownloadUrl().addOnCompleteListener(
+                                new OnCompleteListener<Uri>() {
+                                    @Override
+                                    public void onComplete(@NonNull Task<Uri> task) {
+                                        if (task.isSuccessful()) {
+                                            String downloadUrl = task.getResult().toString();
+                                            Glide.with(viewHolder.messageImageView.getContext())
+                                                    .load(downloadUrl)
+                                                    .into(viewHolder.messageImageView);
+                                        } else {
+                                            Log.w(TAG, "Getting download url was not successful.",
+                                                    task.getException());
+                                        }
+                                    }
+                                });
+                    } else {
+                        Glide.with(viewHolder.messageImageView.getContext())
+                                .load(friendlyMessage.getImageUrl())
+                                .into(viewHolder.messageImageView);
+                    }
+                    viewHolder.messageImageView.setVisibility(ImageView.VISIBLE);
+                }
+
+
+                viewHolder.messengerTextView.setText(friendlyMessage.getName());
+                if (friendlyMessage.getPhotoUrl() == null) {
+                    viewHolder.messengerImageView.setImageDrawable(ContextCompat.getDrawable(MainActivity.this,
+                            R.drawable.ic_account_circle_black_36dp));
+                } else {
+                    Glide.with(MainActivity.this)
+                            .load(friendlyMessage.getPhotoUrl())
+                            .into(viewHolder.messengerImageView);
+                }
+
+            }
+        };
+
+
         mFirebaseAdapter.registerAdapterDataObserver(new RecyclerView.AdapterDataObserver() {
             @Override
             public void onItemRangeInserted(int positionStart, int itemCount) {
@@ -237,8 +302,26 @@ public class MainActivity extends AppCompatActivity
             }
         });
 
+        publicFirebaseAdapter.registerAdapterDataObserver(new RecyclerView.AdapterDataObserver() {
+            @Override
+            public void onItemRangeInserted(int positionStart, int itemCount) {
+                super.onItemRangeInserted(positionStart, itemCount);
+                int friendlyMessageCount = mFirebaseAdapter.getItemCount();
+                int lastVisiblePosition =
+                        mLinearLayoutManager.findLastCompletelyVisibleItemPosition();
+                // If the recycler view is initially being loaded or the
+                // user is at the bottom of the list, scroll to the bottom
+                // of the list to show the newly added message.
+                if (lastVisiblePosition == -1 ||
+                        (positionStart >= (friendlyMessageCount - 1) &&
+                                lastVisiblePosition == (positionStart - 1))) {
+                    mMessageRecyclerView.scrollToPosition(positionStart);
+                }
+            }
+        });
+
         mMessageRecyclerView.setLayoutManager(mLinearLayoutManager);
-        mMessageRecyclerView.setAdapter(mFirebaseAdapter);
+        mMessageRecyclerView.setAdapter(publicFirebaseAdapter);
 
         mMessageEditText = (EditText) findViewById(R.id.messageEditText);
         mMessageEditText.setFilters(new InputFilter[]{new InputFilter.LengthFilter(mSharedPreferences
@@ -251,9 +334,11 @@ public class MainActivity extends AppCompatActivity
             @Override
             public void onTextChanged(CharSequence charSequence, int i, int i1, int i2) {
                 if (charSequence.toString().trim().length() > 0) {
-                    mSendButton.setEnabled(true);
+                    mUploadButton.setEnabled(true);
+                    mPublishButton.setEnabled(true);
                 } else {
-                    mSendButton.setEnabled(false);
+                    mUploadButton.setEnabled(false);
+                    mPublishButton.setEnabled(false);
                 }
             }
 
@@ -262,24 +347,35 @@ public class MainActivity extends AppCompatActivity
             }
         });
 
-        mSendButton = (Button) findViewById(R.id.sendButton);
-        mSendButton.setOnClickListener(new View.OnClickListener() {
+        mUploadButton = (Button) findViewById(R.id.uploadButton);
+        mUploadButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
                 Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
                 intent.addCategory(Intent.CATEGORY_OPENABLE);
                 intent.setType("image/*");
-                startActivityForResult(intent, REQUEST_IMAGE);
+                startActivityForResult(intent, REQUEST_UPLOAD_IMAGE);
+            }
+        });
+
+        mPublishButton = (Button) findViewById(R.id.publishButton);
+        mPublishButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                intent.addCategory(Intent.CATEGORY_OPENABLE);
+                intent.setType("image/*");
+                startActivityForResult(intent, REQUEST_PUBLISH_IMAGE);
             }
         });
     }
 
     @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+    protected void onActivityResult(final int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         Log.d(TAG, "onActivityResult: requestCode=" + requestCode + ", resultCode=" + resultCode);
 
-        if (requestCode == REQUEST_IMAGE) {
+        if (requestCode == REQUEST_UPLOAD_IMAGE || requestCode == REQUEST_PUBLISH_IMAGE) {
             if (resultCode == RESULT_OK) {
                 if (data != null) {
                     final Uri uri = data.getData();
@@ -288,8 +384,16 @@ public class MainActivity extends AppCompatActivity
                     FriendlyMessage tempMessage = new FriendlyMessage(mMessageEditText.getText().toString(),
                             mUsername, mPhotoUrl,
                             LOADING_IMAGE_URL);
-                    mFirebaseDatabaseReference.child(MESSAGES_CHILD).push()
-                            .setValue(tempMessage, new DatabaseReference.CompletionListener() {
+
+
+
+                    if (requestCode == REQUEST_PUBLISH_IMAGE) {
+                        myReference = mFirebaseDatabaseReference.child(PUBLIC_CHILD);
+                    } else {
+                        myReference = mFirebaseDatabaseReference.child(USER_CHILD).child(mFirebaseUser.getUid());
+                    }
+
+                    myReference.push().setValue(tempMessage, new DatabaseReference.CompletionListener() {
                                 @Override
                                 public void onComplete(DatabaseError databaseError,
                                                        DatabaseReference databaseReference) {
@@ -301,7 +405,7 @@ public class MainActivity extends AppCompatActivity
                                                         .child(key)
                                                         .child(uri.getLastPathSegment());
 
-                                        putImageInStorage(storageReference, uri, key);
+                                        putImageInStorage(storageReference, uri, key, myReference);
                                     } else {
                                         Log.w(TAG, "Unable to write message to database.",
                                                 databaseError.toException());
@@ -313,7 +417,7 @@ public class MainActivity extends AppCompatActivity
         }
     }
 
-    private void putImageInStorage(StorageReference storageReference, Uri uri, final String key) {
+    private void putImageInStorage(StorageReference storageReference, Uri uri, final String key, final DatabaseReference myReference) {
         storageReference.putFile(uri).addOnCompleteListener(MainActivity.this,
                 new OnCompleteListener<UploadTask.TaskSnapshot>() {
                     @Override
@@ -324,8 +428,7 @@ public class MainActivity extends AppCompatActivity
                                             mUsername, mPhotoUrl,
                                             task.getResult().getMetadata().getDownloadUrl()
                                                     .toString());
-                            mFirebaseDatabaseReference.child(MESSAGES_CHILD).child(key)
-                                    .setValue(friendlyMessage);
+                            myReference.child(key).setValue(friendlyMessage);
                             mMessageEditText.setText("");
                         } else {
                             Log.w(TAG, "Image upload task was not successful.",
