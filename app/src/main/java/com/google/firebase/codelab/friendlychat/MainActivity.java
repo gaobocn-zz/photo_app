@@ -76,6 +76,8 @@ import com.google.firebase.storage.UploadTask;
 
 import com.google.firebase.database.Query;
 import com.google.firebase.database.ValueEventListener;
+
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -84,6 +86,8 @@ import java.util.ArrayList;
 import android.widget.ArrayAdapter;
 import android.widget.BaseAdapter;
 import java.util.Collections;
+import java.util.Date;
+import java.text.SimpleDateFormat;
 
 import de.hdodenhof.circleimageview.CircleImageView;
 
@@ -138,18 +142,14 @@ public class MainActivity extends AppCompatActivity
     private EditText mMessageEditText;
 
     private DatabaseReference myReference;
-    private FirebaseRecyclerAdapter<FriendlyMessage, MessageViewHolder>
-            publicFirebaseAdapter;
 
     private ListView myListView;
 
-    private List<ImageInfo> contentArray;
-
-//    private ArrayAdapter<ImageInfo> myListAdapter;
+    private List<ImageInfo> privateList;
+    private List<ImageInfo> publicList;
+    private List<ImageInfo> contentList;
 
     private CustomListAdapter myListAdapter;
-
-    // Firebase instance variables
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -163,7 +163,6 @@ public class MainActivity extends AppCompatActivity
         mFirebaseAuth = FirebaseAuth.getInstance();
         mFirebaseUser = mFirebaseAuth.getCurrentUser();
         if (mFirebaseUser == null) {
-            // Not signed in, launch the Sign In activity
             startActivity(new Intent(this, SignInActivity.class));
             finish();
             return;
@@ -179,44 +178,66 @@ public class MainActivity extends AppCompatActivity
                 .addApi(Auth.GOOGLE_SIGN_IN_API)
                 .build();
 
-        // Initialize ProgressBar and RecyclerView.
         mProgressBar = (ProgressBar) findViewById(R.id.progressBar);
-//        mMessageRecyclerView = (RecyclerView) findViewById(R.id.messageRecyclerView);
-        mLinearLayoutManager = new LinearLayoutManager(this);
-        mLinearLayoutManager.setStackFromEnd(true);
-//        mMessageRecyclerView.setLayoutManager(mLinearLayoutManager);
 
         mFirebaseDatabaseReference = FirebaseDatabase.getInstance().getReference();
 
-        contentArray = new ArrayList<ImageInfo>();
-        Query myTopPostsQuery = mFirebaseDatabaseReference.child(PUBLIC_CHILD);
-        myTopPostsQuery.addValueEventListener(new ValueEventListener() {
+        contentList = new ArrayList<>();
+        privateList = new ArrayList<>();
+        publicList = new ArrayList<>();
+        Query publicQuery = mFirebaseDatabaseReference.child(PUBLIC_CHILD);
+        publicQuery.addValueEventListener(new ValueEventListener() {
             @Override
             public void onDataChange(DataSnapshot dataSnapshot) {
-                contentArray.clear();
+                publicList.clear();
                 for (DataSnapshot messageSnapshot: dataSnapshot.getChildren()) {
                     String name = (String) messageSnapshot.child("name").getValue();
                     String text = (String) messageSnapshot.child("text").getValue();
                     String imageUrl = (String) messageSnapshot.child("imageUrl").getValue();
                     String photoUrl = (String) messageSnapshot.child("photoUrl").getValue();
-                    ImageInfo tInfo =  new ImageInfo(name, text, imageUrl, photoUrl);
-                    contentArray.add(tInfo);
+                    String timeStamp = (String) messageSnapshot.child("timeStamp").getValue();
+                    ImageInfo tInfo =  new ImageInfo(name, text, imageUrl, photoUrl, timeStamp);
+                    publicList.add(tInfo);
 //                    System.out.println(text);
 //                    System.out.println(name);
-//                    System.out.println(contentArray.size());
+//                    System.out.println(contentList.size());
                 }
-                Collections.reverse(contentArray);
+                updateContentList();
             }
             @Override
-            public void onCancelled(DatabaseError error) { }
+            public void onCancelled(DatabaseError error) {}
         });
+
+        if (mFirebaseUser != null) {
+            // signed in user
+            Query privateQuery = mFirebaseDatabaseReference.child(USER_CHILD).child(mFirebaseUser.getUid());
+            privateQuery.addValueEventListener(new ValueEventListener() {
+                @Override
+                public void onDataChange(DataSnapshot dataSnapshot) {
+                    privateList.clear();
+                    for (DataSnapshot messageSnapshot: dataSnapshot.getChildren()) {
+                        String name = (String) messageSnapshot.child("name").getValue();
+                        String text = (String) messageSnapshot.child("text").getValue();
+                        String imageUrl = (String) messageSnapshot.child("imageUrl").getValue();
+                        String photoUrl = (String) messageSnapshot.child("photoUrl").getValue();
+                        String timeStamp = (String) messageSnapshot.child("timeStamp").getValue();
+                        ImageInfo tInfo =  new ImageInfo(name, text, imageUrl, photoUrl, timeStamp);
+                        privateList.add(tInfo);
+                    }
+                    updateContentList();
+                }
+                @Override
+                public void onCancelled(DatabaseError error) {}
+            });
+        }
+
 
         myListView = (ListView) findViewById(R.id.myListView);
 
         myListAdapter = new CustomListAdapter(
                 this,
                 R.layout.item_message,
-                contentArray);
+                contentList);
 
         myListView.setAdapter(myListAdapter);
         mProgressBar.setVisibility(ProgressBar.INVISIBLE);
@@ -268,6 +289,21 @@ public class MainActivity extends AppCompatActivity
         });
     }
 
+    private void updateContentList() {
+        contentList.clear();
+        contentList.addAll(publicList);
+        contentList.addAll(privateList);
+        System.out.println(contentList.size());
+        if (!contentList.isEmpty()) {
+            Collections.sort(contentList, new Comparator<ImageInfo>() {
+                @Override
+                public int compare(ImageInfo lhs, ImageInfo rhs) {
+                    return -lhs.timeStamp.compareTo(rhs.timeStamp);
+                }
+            });
+        }
+    }
+
     @Override
     protected void onActivityResult(final int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
@@ -280,8 +316,7 @@ public class MainActivity extends AppCompatActivity
                     Log.d(TAG, "Uri: " + uri.toString());
 
                     FriendlyMessage tempMessage = new FriendlyMessage(mMessageEditText.getText().toString(),
-                            mUsername, mPhotoUrl,
-                            LOADING_IMAGE_URL);
+                            mUsername, mPhotoUrl, LOADING_IMAGE_URL, new SimpleDateFormat("yyyy.MM.dd.HH.mm.ss").format(new Date()));
 
                     if (requestCode == REQUEST_PUBLISH_IMAGE) {
                         myReference = mFirebaseDatabaseReference.child(PUBLIC_CHILD);
@@ -319,11 +354,10 @@ public class MainActivity extends AppCompatActivity
                     @Override
                     public void onComplete(@NonNull Task<UploadTask.TaskSnapshot> task) {
                         if (task.isSuccessful()) {
-                            FriendlyMessage friendlyMessage =
-                                    new FriendlyMessage(mMessageEditText.getText().toString(),
-                                            mUsername, mPhotoUrl,
-                                            task.getResult().getMetadata().getDownloadUrl()
-                                                    .toString());
+                            FriendlyMessage friendlyMessage = new FriendlyMessage(mMessageEditText.getText().toString(),
+                                            mUsername, mPhotoUrl, task.getResult().getMetadata().getDownloadUrl().toString(),
+                                            new SimpleDateFormat("yyyy.MM.dd.HH.mm.ss").format(new Date())
+                                    );
                             myReference.child(key).setValue(friendlyMessage);
                             mMessageEditText.setText("");
                             ((BaseAdapter) myListView.getAdapter()).notifyDataSetChanged();
@@ -368,11 +402,23 @@ public class MainActivity extends AppCompatActivity
     public boolean onOptionsItemSelected(MenuItem item) {
         switch (item.getItemId()) {
             case R.id.sign_out_menu:
-                mFirebaseAuth.signOut();
-                Auth.GoogleSignInApi.signOut(mGoogleApiClient);
-                mUsername = ANONYMOUS;
-                startActivity(new Intent(this, SignInActivity.class));
-                return true;
+                if (mFirebaseUser != null) {
+                    mFirebaseAuth.signOut();
+                    Auth.GoogleSignInApi.signOut(mGoogleApiClient);
+                    mUsername = ANONYMOUS;
+                    startActivity(new Intent(this, SignInActivity.class));
+                    return true;
+                } else {
+                    return false;
+                }
+            case R.id.Sign_in_menu:
+                if (mFirebaseUser == null) {
+                    startActivity(new Intent(this, SignInActivity.class));
+                    finish();
+                    return true;
+                } else {
+                    return false;
+                }
             default:
                 return super.onOptionsItemSelected(item);
         }

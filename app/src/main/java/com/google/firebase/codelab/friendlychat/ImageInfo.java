@@ -9,10 +9,12 @@ public class ImageInfo {
     public String text;
     public String imageUrl;
     public String photoUrl;
-    public ImageInfo(String tName, String tText, String tImageUrl, String tPhotoUrl) {
+    public String timeStamp;
+    public ImageInfo(String tName, String tText, String tImageUrl, String tPhotoUrl, String tTimeStamp) {
         this.name = tName;
         this.text = tText;
         this.imageUrl = tImageUrl;
         this.photoUrl = tPhotoUrl;
+        this.timeStamp = tTimeStamp;
     }
 }
