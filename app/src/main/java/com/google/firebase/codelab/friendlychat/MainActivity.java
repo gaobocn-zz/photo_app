@@ -36,6 +36,7 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageView;
+import android.widget.ListView;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -73,8 +74,16 @@ import com.google.firebase.storage.FirebaseStorage;
 import com.google.firebase.storage.StorageReference;
 import com.google.firebase.storage.UploadTask;
 
+import com.google.firebase.database.Query;
+import com.google.firebase.database.ValueEventListener;
 import java.util.HashMap;
 import java.util.Map;
+
+import java.util.List;
+import java.util.ArrayList;
+import android.widget.ArrayAdapter;
+import android.widget.BaseAdapter;
+import java.util.Collections;
 
 import de.hdodenhof.circleimageview.CircleImageView;
 
@@ -132,6 +141,14 @@ public class MainActivity extends AppCompatActivity
     private FirebaseRecyclerAdapter<FriendlyMessage, MessageViewHolder>
             publicFirebaseAdapter;
 
+    private ListView myListView;
+
+    private List<ImageInfo> contentArray;
+
+//    private ArrayAdapter<ImageInfo> myListAdapter;
+
+    private CustomListAdapter myListAdapter;
+
     // Firebase instance variables
 
     @Override
@@ -164,124 +181,45 @@ public class MainActivity extends AppCompatActivity
 
         // Initialize ProgressBar and RecyclerView.
         mProgressBar = (ProgressBar) findViewById(R.id.progressBar);
-        mMessageRecyclerView = (RecyclerView) findViewById(R.id.messageRecyclerView);
+//        mMessageRecyclerView = (RecyclerView) findViewById(R.id.messageRecyclerView);
         mLinearLayoutManager = new LinearLayoutManager(this);
         mLinearLayoutManager.setStackFromEnd(true);
-        mMessageRecyclerView.setLayoutManager(mLinearLayoutManager);
+//        mMessageRecyclerView.setLayoutManager(mLinearLayoutManager);
 
-        // get public images
         mFirebaseDatabaseReference = FirebaseDatabase.getInstance().getReference();
-        publicFirebaseAdapter = new FirebaseRecyclerAdapter<FriendlyMessage,
-                MessageViewHolder>(
-                FriendlyMessage.class,
-                R.layout.item_message,
-                MessageViewHolder.class,
-                mFirebaseDatabaseReference.child(PUBLIC_CHILD)) {
 
+        contentArray = new ArrayList<ImageInfo>();
+        Query myTopPostsQuery = mFirebaseDatabaseReference.child(PUBLIC_CHILD);
+        myTopPostsQuery.addValueEventListener(new ValueEventListener() {
             @Override
-            protected void populateViewHolder(final MessageViewHolder viewHolder,
-                                              FriendlyMessage friendlyMessage, int position) {
-                mProgressBar.setVisibility(ProgressBar.INVISIBLE);
-                if (friendlyMessage.getText() != null) {
-                    viewHolder.messageTextView.setText(friendlyMessage.getText());
-                    viewHolder.messageTextView.setVisibility(TextView.VISIBLE);
-                    String imageUrl = friendlyMessage.getImageUrl();
-                    System.out.println(imageUrl);
-                    Glide.with(viewHolder.messageImageView.getContext())
-                            .load(friendlyMessage.getImageUrl())
-                            .into(viewHolder.messageImageView);
-                    viewHolder.messageImageView.setVisibility(ImageView.VISIBLE);
+            public void onDataChange(DataSnapshot dataSnapshot) {
+                contentArray.clear();
+                for (DataSnapshot messageSnapshot: dataSnapshot.getChildren()) {
+                    String name = (String) messageSnapshot.child("name").getValue();
+                    String text = (String) messageSnapshot.child("text").getValue();
+                    String imageUrl = (String) messageSnapshot.child("imageUrl").getValue();
+                    String photoUrl = (String) messageSnapshot.child("photoUrl").getValue();
+                    ImageInfo tInfo =  new ImageInfo(name, text, imageUrl, photoUrl);
+                    contentArray.add(tInfo);
+//                    System.out.println(text);
+//                    System.out.println(name);
+//                    System.out.println(contentArray.size());
                 }
-
-                viewHolder.messengerTextView.setText(friendlyMessage.getName());
-                if (friendlyMessage.getPhotoUrl() == null) {
-                    viewHolder.messengerImageView.setImageDrawable(ContextCompat.getDrawable(MainActivity.this,
-                            R.drawable.ic_account_circle_black_36dp));
-                } else {
-                    Glide.with(MainActivity.this)
-                            .load(friendlyMessage.getPhotoUrl())
-                            .into(viewHolder.messengerImageView);
-                }
-
+                Collections.reverse(contentArray);
             }
-        };
-
-        publicFirebaseAdapter.registerAdapterDataObserver(new RecyclerView.AdapterDataObserver() {
             @Override
-            public void onItemRangeInserted(int positionStart, int itemCount) {
-                super.onItemRangeInserted(positionStart, itemCount);
-                int friendlyMessageCount = mFirebaseAdapter.getItemCount();
-                int lastVisiblePosition =
-                        mLinearLayoutManager.findLastCompletelyVisibleItemPosition();
-                // If the recycler view is initially being loaded or the
-                // user is at the bottom of the list, scroll to the bottom
-                // of the list to show the newly added message.
-                if (lastVisiblePosition == -1 ||
-                        (positionStart >= (friendlyMessageCount - 1) &&
-                                lastVisiblePosition == (positionStart - 1))) {
-                    mMessageRecyclerView.scrollToPosition(positionStart);
-                }
-            }
+            public void onCancelled(DatabaseError error) { }
         });
 
-        // New child entries
-//        mFirebaseDatabaseReference = FirebaseDatabase.getInstance().getReference();
-        mFirebaseAdapter = new FirebaseRecyclerAdapter<FriendlyMessage,
-                MessageViewHolder>(
-                FriendlyMessage.class,
+        myListView = (ListView) findViewById(R.id.myListView);
+
+        myListAdapter = new CustomListAdapter(
+                this,
                 R.layout.item_message,
-                MessageViewHolder.class,
-                mFirebaseDatabaseReference.child(USER_CHILD).child(mFirebaseUser.getUid())) {
+                contentArray);
 
-            @Override
-            protected void populateViewHolder(final MessageViewHolder viewHolder,
-                                              FriendlyMessage friendlyMessage, int position) {
-                mProgressBar.setVisibility(ProgressBar.INVISIBLE);
-                if (friendlyMessage.getText() != null) {
-                    viewHolder.messageTextView.setText(friendlyMessage.getText());
-                    viewHolder.messageTextView.setVisibility(TextView.VISIBLE);
-                    String imageUrl = friendlyMessage.getImageUrl();
-                    Glide.with(viewHolder.messageImageView.getContext())
-                            .load(friendlyMessage.getImageUrl())
-                            .into(viewHolder.messageImageView);
-                    viewHolder.messageImageView.setVisibility(ImageView.VISIBLE);
-                }
-
-
-                viewHolder.messengerTextView.setText(friendlyMessage.getName());
-                if (friendlyMessage.getPhotoUrl() == null) {
-                    viewHolder.messengerImageView.setImageDrawable(ContextCompat.getDrawable(MainActivity.this,
-                            R.drawable.ic_account_circle_black_36dp));
-                } else {
-                    Glide.with(MainActivity.this)
-                            .load(friendlyMessage.getPhotoUrl())
-                            .into(viewHolder.messengerImageView);
-                }
-
-            }
-        };
-
-        mFirebaseAdapter.registerAdapterDataObserver(new RecyclerView.AdapterDataObserver() {
-            @Override
-            public void onItemRangeInserted(int positionStart, int itemCount) {
-                super.onItemRangeInserted(positionStart, itemCount);
-                int friendlyMessageCount = mFirebaseAdapter.getItemCount();
-                int lastVisiblePosition =
-                        mLinearLayoutManager.findLastCompletelyVisibleItemPosition();
-                // If the recycler view is initially being loaded or the
-                // user is at the bottom of the list, scroll to the bottom
-                // of the list to show the newly added message.
-                if (lastVisiblePosition == -1 ||
-                        (positionStart >= (friendlyMessageCount - 1) &&
-                                lastVisiblePosition == (positionStart - 1))) {
-                    mMessageRecyclerView.scrollToPosition(positionStart);
-                }
-            }
-        });
-
-        mMessageRecyclerView.setLayoutManager(mLinearLayoutManager);
-        mMessageRecyclerView.setAdapter(mFirebaseAdapter);
-//        mMessageRecyclerView.setAdapter(publicFirebaseAdapter);
+        myListView.setAdapter(myListAdapter);
+        mProgressBar.setVisibility(ProgressBar.INVISIBLE);
 
         mMessageEditText = (EditText) findViewById(R.id.messageEditText);
         mMessageEditText.setFilters(new InputFilter[]{new InputFilter.LengthFilter(mSharedPreferences
@@ -345,8 +283,6 @@ public class MainActivity extends AppCompatActivity
                             mUsername, mPhotoUrl,
                             LOADING_IMAGE_URL);
 
-
-
                     if (requestCode == REQUEST_PUBLISH_IMAGE) {
                         myReference = mFirebaseDatabaseReference.child(PUBLIC_CHILD);
                     } else {
@@ -390,6 +326,7 @@ public class MainActivity extends AppCompatActivity
                                                     .toString());
                             myReference.child(key).setValue(friendlyMessage);
                             mMessageEditText.setText("");
+                            ((BaseAdapter) myListView.getAdapter()).notifyDataSetChanged();
                         } else {
                             Log.w(TAG, "Image upload task was not successful.",
                                     task.getException());

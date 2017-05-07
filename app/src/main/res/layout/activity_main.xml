@@ -14,17 +14,15 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
+        android:orientation="vertical"
         android:layout_alignParentTop="true"
         android:layout_alignParentStart="true"
         android:layout_above="@+id/linearLayout">
 
-        <android.support.v7.widget.RecyclerView
-            android:id="@+id/messageRecyclerView"
+        <ListView
+            android:id="@+id/myListView"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:scrollbars="vertical" />
-
+            android:layout_height="match_parent" />
     </LinearLayout>
 
     <LinearLayout
