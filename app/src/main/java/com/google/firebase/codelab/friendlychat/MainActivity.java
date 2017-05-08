@@ -151,11 +151,8 @@ public class MainActivity extends AppCompatActivity
         // Initialize Firebase Auth
         mFirebaseAuth = FirebaseAuth.getInstance();
         mFirebaseUser = mFirebaseAuth.getCurrentUser();
-        if (mFirebaseUser == null) {
-            startActivity(new Intent(this, SignInActivity.class));
-            finish();
-            return;
-        } else {
+
+        if (mFirebaseUser != null) {
             mUsername = mFirebaseUser.getDisplayName();
             if (mFirebaseUser.getPhotoUrl() != null) {
                 mPhotoUrl = mFirebaseUser.getPhotoUrl().toString();
@@ -232,17 +229,23 @@ public class MainActivity extends AppCompatActivity
         mProgressBar.setVisibility(ProgressBar.INVISIBLE);
 
         mMessageEditText = (EditText) findViewById(R.id.messageEditText);
+        if (mFirebaseUser != null) {
+            mMessageEditText.setHint(R.string.description_hint);
+        } else {
+            mMessageEditText.setHint(R.string.signin_hint);
+        }
         mMessageEditText.setFilters(new InputFilter[]{new InputFilter.LengthFilter(mSharedPreferences
                 .getInt(CodelabPreferences.FRIENDLY_MSG_LENGTH, DEFAULT_MSG_LENGTH_LIMIT))});
         mMessageEditText.addTextChangedListener(new TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence charSequence, int i, int i1, int i2) {}
-
             @Override
             public void onTextChanged(CharSequence charSequence, int i, int i1, int i2) {
                 if (charSequence.toString().trim().length() > 0) {
-                    mUploadButton.setEnabled(true);
-                    mPublishButton.setEnabled(true);
+                    if (mFirebaseUser != null) {
+                        mUploadButton.setEnabled(true);
+                        mPublishButton.setEnabled(true);
+                    }
                     mSearchButton.setEnabled(true);
                 } else {
                     mUploadButton.setEnabled(false);
@@ -298,8 +301,10 @@ public class MainActivity extends AppCompatActivity
         ((BaseAdapter) myListView.getAdapter()).notifyDataSetChanged();
         // hide soft keyboard
         View view = this.getCurrentFocus();
-        InputMethodManager imm = (InputMethodManager)getSystemService(Context.INPUT_METHOD_SERVICE);
-        imm.hideSoftInputFromWindow(view.getWindowToken(), 0);
+        if (view != null) {
+            InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+            imm.hideSoftInputFromWindow(view.getWindowToken(), 0);
+        }
     }
 
     private void updateContentList() {
@@ -416,7 +421,11 @@ public class MainActivity extends AppCompatActivity
                     mFirebaseAuth.signOut();
                     Auth.GoogleSignInApi.signOut(mGoogleApiClient);
                     mUsername = ANONYMOUS;
-                    startActivity(new Intent(this, SignInActivity.class));
+                    mFirebaseUser = null;
+                    mMessageEditText.setHint(R.string.signin_hint);
+                    privateList.clear();
+                    updateContentList();
+                    updateListView();
                     return true;
                 } else {
                     return false;
