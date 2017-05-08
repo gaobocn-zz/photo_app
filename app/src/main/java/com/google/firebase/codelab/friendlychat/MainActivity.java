@@ -139,6 +139,8 @@ public class MainActivity extends AppCompatActivity
 
     private CustomListAdapter myListAdapter;
 
+    private Query privateQuery;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -150,14 +152,15 @@ public class MainActivity extends AppCompatActivity
 
         // Initialize Firebase Auth
         mFirebaseAuth = FirebaseAuth.getInstance();
-        mFirebaseUser = mFirebaseAuth.getCurrentUser();
+//        mFirebaseUser = mFirebaseAuth.getCurrentUser();
+//
+//        if (mFirebaseUser != null) {
+//            mUsername = mFirebaseUser.getDisplayName();
+//            if (mFirebaseUser.getPhotoUrl() != null) {
+//                mPhotoUrl = mFirebaseUser.getPhotoUrl().toString();
+//            }
+//        }
 
-        if (mFirebaseUser != null) {
-            mUsername = mFirebaseUser.getDisplayName();
-            if (mFirebaseUser.getPhotoUrl() != null) {
-                mPhotoUrl = mFirebaseUser.getPhotoUrl().toString();
-            }
-        }
 
         mGoogleApiClient = new GoogleApiClient.Builder(this)
                 .enableAutoManage(this /* FragmentActivity */, this /* OnConnectionFailedListener */)
@@ -202,37 +205,13 @@ public class MainActivity extends AppCompatActivity
             public void onCancelled(DatabaseError error) {}
         });
 
-        if (mFirebaseUser != null) {
-            // signed in user
-            Query privateQuery = mFirebaseDatabaseReference.child(USER_CHILD).child(mFirebaseUser.getUid());
-            privateQuery.addValueEventListener(new ValueEventListener() {
-                @Override
-                public void onDataChange(DataSnapshot dataSnapshot) {
-                    privateList.clear();
-                    for (DataSnapshot messageSnapshot: dataSnapshot.getChildren()) {
-                        String name = (String) messageSnapshot.child("name").getValue();
-                        String text = (String) messageSnapshot.child("text").getValue();
-                        String imageUrl = (String) messageSnapshot.child("imageUrl").getValue();
-                        String photoUrl = (String) messageSnapshot.child("photoUrl").getValue();
-                        String timeStamp = (String) messageSnapshot.child("timeStamp").getValue();
-                        ImageInfo tInfo =  new ImageInfo(name, text, imageUrl, photoUrl, timeStamp);
-                        privateList.add(tInfo);
-                    }
-                    updateContentList();
-                    updateListView();
-                }
-                @Override
-                public void onCancelled(DatabaseError error) {}
-            });
-        }
-
         mProgressBar.setVisibility(ProgressBar.INVISIBLE);
 
         mMessageEditText = (EditText) findViewById(R.id.messageEditText);
         if (mFirebaseUser != null) {
             mMessageEditText.setHint(R.string.description_hint);
         } else {
-            mMessageEditText.setHint(R.string.signin_hint);
+            mMessageEditText.setHint(R.string.sign_in_hint);
         }
         mMessageEditText.setFilters(new InputFilter[]{new InputFilter.LengthFilter(mSharedPreferences
                 .getInt(CodelabPreferences.FRIENDLY_MSG_LENGTH, DEFAULT_MSG_LENGTH_LIMIT))});
@@ -295,6 +274,8 @@ public class MainActivity extends AppCompatActivity
                 updateListView();
             }
         });
+
+        updateUserStatus();
     }
 
     private void updateListView() {
@@ -375,6 +356,7 @@ public class MainActivity extends AppCompatActivity
                                     );
                             myReference.child(key).setValue(friendlyMessage);
                             mMessageEditText.setText("");
+                            updateContentList();
                             updateListView();
                         } else {
                             Log.w(TAG, "Image upload task was not successful.",
@@ -387,8 +369,6 @@ public class MainActivity extends AppCompatActivity
     @Override
     public void onStart() {
         super.onStart();
-        // Check if user is signed in.
-        // TODO: Add code to check if user is signed in.
     }
 
     @Override
@@ -413,6 +393,47 @@ public class MainActivity extends AppCompatActivity
         return true;
     }
 
+    private void updateUserStatus() {
+        mFirebaseUser = mFirebaseAuth.getCurrentUser();
+        System.out.println("updateUserStatus");
+        if (mFirebaseUser == null) {
+            mUsername = ANONYMOUS;
+            mMessageEditText.setHint(R.string.sign_in_hint);
+            privateList.clear();
+        } else {
+            // signed in user
+            mUsername = mFirebaseUser.getDisplayName();
+            mMessageEditText.setHint(R.string.description_hint);
+            System.out.println(mUsername);
+            if (mFirebaseUser.getPhotoUrl() != null) {
+                mPhotoUrl = mFirebaseUser.getPhotoUrl().toString();
+            }
+            privateQuery = mFirebaseDatabaseReference.child(USER_CHILD).child(mFirebaseUser.getUid());
+            privateQuery.addValueEventListener(new ValueEventListener() {
+                @Override
+                public void onDataChange(DataSnapshot dataSnapshot) {
+                    privateList.clear();
+                    for (DataSnapshot messageSnapshot: dataSnapshot.getChildren()) {
+                        if ((String) messageSnapshot.child("timeStamp").getValue() == null) continue;
+                        String name = (String) messageSnapshot.child("name").getValue();
+                        String text = (String) messageSnapshot.child("text").getValue();
+                        String imageUrl = (String) messageSnapshot.child("imageUrl").getValue();
+                        String photoUrl = (String) messageSnapshot.child("photoUrl").getValue();
+                        String timeStamp = (String) messageSnapshot.child("timeStamp").getValue();
+                        ImageInfo tInfo =  new ImageInfo(name, text, imageUrl, photoUrl, timeStamp);
+                        privateList.add(tInfo);
+                    }
+                    updateContentList();
+                    updateListView();
+                }
+                @Override
+                public void onCancelled(DatabaseError error) {}
+            });
+        }
+        updateContentList();
+        updateListView();
+    }
+
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         switch (item.getItemId()) {
@@ -420,12 +441,7 @@ public class MainActivity extends AppCompatActivity
                 if (mFirebaseUser != null) {
                     mFirebaseAuth.signOut();
                     Auth.GoogleSignInApi.signOut(mGoogleApiClient);
-                    mUsername = ANONYMOUS;
-                    mFirebaseUser = null;
-                    mMessageEditText.setHint(R.string.signin_hint);
-                    privateList.clear();
-                    updateContentList();
-                    updateListView();
+                    updateUserStatus();
                     return true;
                 } else {
                     return false;
@@ -434,6 +450,7 @@ public class MainActivity extends AppCompatActivity
                 if (mFirebaseUser == null) {
                     startActivity(new Intent(this, SignInActivity.class));
                     finish();
+                    updateUserStatus();
                     return true;
                 } else {
                     return false;
