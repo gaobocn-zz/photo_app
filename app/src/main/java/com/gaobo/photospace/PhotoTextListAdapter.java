@@ -1,7 +1,6 @@
-package com.google.firebase.codelab.friendlychat;
+package com.gaobo.photospace;
 
 import android.app.Activity;
-import android.media.Image;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
