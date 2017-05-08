@@ -15,6 +15,7 @@
  */
 package com.google.firebase.codelab.friendlychat;
 
+import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.net.Uri;
@@ -33,6 +34,8 @@ import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.View;
+import android.view.WindowManager;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageView;
@@ -88,6 +91,7 @@ import android.widget.BaseAdapter;
 import java.util.Collections;
 import java.util.Date;
 import java.text.SimpleDateFormat;
+import java.util.function.Predicate;
 
 import de.hdodenhof.circleimageview.CircleImageView;
 
@@ -100,23 +104,6 @@ public class MainActivity extends AppCompatActivity
 
     // Firebase instance variables
     private DatabaseReference mFirebaseDatabaseReference;
-    private FirebaseRecyclerAdapter<FriendlyMessage, MessageViewHolder>
-            mFirebaseAdapter;
-
-    private static class MessageViewHolder extends RecyclerView.ViewHolder {
-        TextView messageTextView;
-        ImageView messageImageView;
-        TextView messengerTextView;
-        CircleImageView messengerImageView;
-
-        public MessageViewHolder(View v) {
-            super(v);
-            messageTextView = (TextView) itemView.findViewById(R.id.messageTextView);
-            messageImageView = (ImageView) itemView.findViewById(R.id.messageImageView);
-            messengerTextView = (TextView) itemView.findViewById(R.id.messengerTextView);
-            messengerImageView = (CircleImageView) itemView.findViewById(R.id.messengerImageView);
-        }
-    }
 
     private static final String TAG = "MainActivity";
     public static final String PUBLIC_CHILD = "public";
@@ -136,6 +123,7 @@ public class MainActivity extends AppCompatActivity
 
     private Button mUploadButton;
     private Button mPublishButton;
+    private Button mSearchButton;
     private RecyclerView mMessageRecyclerView;
     private LinearLayoutManager mLinearLayoutManager;
     private ProgressBar mProgressBar;
@@ -155,6 +143,7 @@ public class MainActivity extends AppCompatActivity
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
         mSharedPreferences = PreferenceManager.getDefaultSharedPreferences(this);
         // Set default username is anonymous.
         mUsername = ANONYMOUS;
@@ -185,6 +174,16 @@ public class MainActivity extends AppCompatActivity
         contentList = new ArrayList<>();
         privateList = new ArrayList<>();
         publicList = new ArrayList<>();
+
+        myListView = (ListView) findViewById(R.id.myListView);
+
+        myListAdapter = new CustomListAdapter(
+                this,
+                R.layout.item_message,
+                contentList);
+
+        myListView.setAdapter(myListAdapter);
+
         Query publicQuery = mFirebaseDatabaseReference.child(PUBLIC_CHILD);
         publicQuery.addValueEventListener(new ValueEventListener() {
             @Override
@@ -198,11 +197,9 @@ public class MainActivity extends AppCompatActivity
                     String timeStamp = (String) messageSnapshot.child("timeStamp").getValue();
                     ImageInfo tInfo =  new ImageInfo(name, text, imageUrl, photoUrl, timeStamp);
                     publicList.add(tInfo);
-//                    System.out.println(text);
-//                    System.out.println(name);
-//                    System.out.println(contentList.size());
                 }
                 updateContentList();
+                updateListView();
             }
             @Override
             public void onCancelled(DatabaseError error) {}
@@ -225,21 +222,13 @@ public class MainActivity extends AppCompatActivity
                         privateList.add(tInfo);
                     }
                     updateContentList();
+                    updateListView();
                 }
                 @Override
                 public void onCancelled(DatabaseError error) {}
             });
         }
 
-
-        myListView = (ListView) findViewById(R.id.myListView);
-
-        myListAdapter = new CustomListAdapter(
-                this,
-                R.layout.item_message,
-                contentList);
-
-        myListView.setAdapter(myListAdapter);
         mProgressBar.setVisibility(ProgressBar.INVISIBLE);
 
         mMessageEditText = (EditText) findViewById(R.id.messageEditText);
@@ -247,23 +236,23 @@ public class MainActivity extends AppCompatActivity
                 .getInt(CodelabPreferences.FRIENDLY_MSG_LENGTH, DEFAULT_MSG_LENGTH_LIMIT))});
         mMessageEditText.addTextChangedListener(new TextWatcher() {
             @Override
-            public void beforeTextChanged(CharSequence charSequence, int i, int i1, int i2) {
-            }
+            public void beforeTextChanged(CharSequence charSequence, int i, int i1, int i2) {}
 
             @Override
             public void onTextChanged(CharSequence charSequence, int i, int i1, int i2) {
                 if (charSequence.toString().trim().length() > 0) {
                     mUploadButton.setEnabled(true);
                     mPublishButton.setEnabled(true);
+                    mSearchButton.setEnabled(true);
                 } else {
                     mUploadButton.setEnabled(false);
                     mPublishButton.setEnabled(false);
+                    mSearchButton.setEnabled(false);
                 }
             }
 
             @Override
-            public void afterTextChanged(Editable editable) {
-            }
+            public void afterTextChanged(Editable editable) {}
         });
 
         mUploadButton = (Button) findViewById(R.id.uploadButton);
@@ -287,21 +276,42 @@ public class MainActivity extends AppCompatActivity
                 startActivityForResult(intent, REQUEST_PUBLISH_IMAGE);
             }
         });
+
+        mSearchButton = (Button) findViewById(R.id.searchButton);
+        mSearchButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                updateContentList();
+                final String search_text = mMessageEditText.getText().toString().toLowerCase();
+                contentList.removeIf(new Predicate<ImageInfo>() {
+                    public boolean test(ImageInfo info) {
+                        return !info.text.toLowerCase().contains(search_text);
+                    }
+                });
+                mMessageEditText.setText("");
+                updateListView();
+            }
+        });
+    }
+
+    private void updateListView() {
+        ((BaseAdapter) myListView.getAdapter()).notifyDataSetChanged();
+        // hide soft keyboard
+        View view = this.getCurrentFocus();
+        InputMethodManager imm = (InputMethodManager)getSystemService(Context.INPUT_METHOD_SERVICE);
+        imm.hideSoftInputFromWindow(view.getWindowToken(), 0);
     }
 
     private void updateContentList() {
         contentList.clear();
         contentList.addAll(publicList);
         contentList.addAll(privateList);
-        System.out.println(contentList.size());
-        if (!contentList.isEmpty()) {
-            Collections.sort(contentList, new Comparator<ImageInfo>() {
-                @Override
-                public int compare(ImageInfo lhs, ImageInfo rhs) {
-                    return -lhs.timeStamp.compareTo(rhs.timeStamp);
-                }
-            });
-        }
+        Collections.sort(contentList, new Comparator<ImageInfo>() {
+            @Override
+            public int compare(ImageInfo lhs, ImageInfo rhs) {
+                return -lhs.timeStamp.compareTo(rhs.timeStamp);
+            }
+        });
     }
 
     @Override
@@ -360,7 +370,7 @@ public class MainActivity extends AppCompatActivity
                                     );
                             myReference.child(key).setValue(friendlyMessage);
                             mMessageEditText.setText("");
-                            ((BaseAdapter) myListView.getAdapter()).notifyDataSetChanged();
+                            updateListView();
                         } else {
                             Log.w(TAG, "Image upload task was not successful.",
                                     task.getException());
