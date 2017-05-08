@@ -91,7 +91,7 @@ public class SignInActivity extends AppCompatActivity implements
     }
 
     private void emailSignIn() {
-        startActivity(new Intent(this, LogInActivity.class));
+        startActivity(new Intent(this, EmailSignInActivity.class));
     }
 
     @Override

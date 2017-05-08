@@ -13,13 +13,13 @@ import com.bumptech.glide.Glide;
 
 import java.util.List;
 
-public class CustomListAdapter extends ArrayAdapter<ImageInfo> {
+public class PhotoTextListAdapter extends ArrayAdapter<ImageInfo> {
 
     private Activity context;
     private int resource;
     private ImageInfo[] imageInfoList;
 
-    public CustomListAdapter(Activity context, int resource, List<ImageInfo> objects) {
+    public PhotoTextListAdapter(Activity context, int resource, List<ImageInfo> objects) {
         super(context, resource, objects);
 
         this.context = context;

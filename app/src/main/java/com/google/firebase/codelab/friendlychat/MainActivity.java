@@ -22,7 +22,6 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.preference.PreferenceManager;
 import android.support.annotation.NonNull;
-import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.LinearLayoutManager;
 import android.support.v7.widget.RecyclerView;
@@ -34,45 +33,24 @@ import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.View;
-import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
 import android.widget.EditText;
-import android.widget.ImageView;
 import android.widget.ListView;
 import android.widget.ProgressBar;
-import android.widget.TextView;
 import android.widget.Toast;
 
-import com.bumptech.glide.Glide;
-import com.firebase.ui.database.FirebaseRecyclerAdapter;
-import com.google.android.gms.ads.AdRequest;
-import com.google.android.gms.ads.AdView;
-import com.google.android.gms.appinvite.AppInvite;
-import com.google.android.gms.appinvite.AppInviteInvitation;
 import com.google.android.gms.auth.api.Auth;
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.api.GoogleApiClient;
 import com.google.android.gms.tasks.OnCompleteListener;
-import com.google.android.gms.tasks.OnFailureListener;
-import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.android.gms.tasks.Task;
-import com.google.firebase.analytics.FirebaseAnalytics;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
-import com.google.firebase.crash.FirebaseCrash;
 import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
-import com.google.firebase.remoteconfig.FirebaseRemoteConfig;
-import com.google.firebase.remoteconfig.FirebaseRemoteConfigSettings;
-import com.google.firebase.appindexing.Action;
-import com.google.firebase.appindexing.FirebaseAppIndex;
-import com.google.firebase.appindexing.FirebaseUserActions;
-import com.google.firebase.appindexing.Indexable;
-import com.google.firebase.appindexing.builders.Indexables;
-import com.google.firebase.appindexing.builders.PersonBuilder;
 import com.google.firebase.storage.FirebaseStorage;
 import com.google.firebase.storage.StorageReference;
 import com.google.firebase.storage.UploadTask;
@@ -81,19 +59,15 @@ import com.google.firebase.database.Query;
 import com.google.firebase.database.ValueEventListener;
 
 import java.util.Comparator;
-import java.util.HashMap;
-import java.util.Map;
 
 import java.util.List;
 import java.util.ArrayList;
-import android.widget.ArrayAdapter;
+
 import android.widget.BaseAdapter;
 import java.util.Collections;
 import java.util.Date;
 import java.text.SimpleDateFormat;
 import java.util.function.Predicate;
-
-import de.hdodenhof.circleimageview.CircleImageView;
 
 public class MainActivity extends AppCompatActivity
         implements GoogleApiClient.OnConnectionFailedListener {
@@ -137,7 +111,7 @@ public class MainActivity extends AppCompatActivity
     private List<ImageInfo> publicList;
     private List<ImageInfo> contentList;
 
-    private CustomListAdapter myListAdapter;
+    private PhotoTextListAdapter myListAdapter;
 
     private Query privateQuery;
 
@@ -152,15 +126,6 @@ public class MainActivity extends AppCompatActivity
 
         // Initialize Firebase Auth
         mFirebaseAuth = FirebaseAuth.getInstance();
-//        mFirebaseUser = mFirebaseAuth.getCurrentUser();
-//
-//        if (mFirebaseUser != null) {
-//            mUsername = mFirebaseUser.getDisplayName();
-//            if (mFirebaseUser.getPhotoUrl() != null) {
-//                mPhotoUrl = mFirebaseUser.getPhotoUrl().toString();
-//            }
-//        }
-
 
         mGoogleApiClient = new GoogleApiClient.Builder(this)
                 .enableAutoManage(this /* FragmentActivity */, this /* OnConnectionFailedListener */)
@@ -177,7 +142,7 @@ public class MainActivity extends AppCompatActivity
 
         myListView = (ListView) findViewById(R.id.myListView);
 
-        myListAdapter = new CustomListAdapter(
+        myListAdapter = new PhotoTextListAdapter(
                 this,
                 R.layout.item_message,
                 contentList);
@@ -195,7 +160,7 @@ public class MainActivity extends AppCompatActivity
                     String imageUrl = (String) messageSnapshot.child("imageUrl").getValue();
                     String photoUrl = (String) messageSnapshot.child("photoUrl").getValue();
                     String timeStamp = (String) messageSnapshot.child("timeStamp").getValue();
-                    ImageInfo tInfo =  new ImageInfo(name, text, imageUrl, photoUrl, timeStamp);
+                    ImageInfo tInfo =  new ImageInfo(text, name, photoUrl, imageUrl, timeStamp);
                     publicList.add(tInfo);
                 }
                 updateContentList();
@@ -214,7 +179,7 @@ public class MainActivity extends AppCompatActivity
             mMessageEditText.setHint(R.string.sign_in_hint);
         }
         mMessageEditText.setFilters(new InputFilter[]{new InputFilter.LengthFilter(mSharedPreferences
-                .getInt(CodelabPreferences.FRIENDLY_MSG_LENGTH, DEFAULT_MSG_LENGTH_LIMIT))});
+                .getInt("friendly_msg_length", DEFAULT_MSG_LENGTH_LIMIT))});
         mMessageEditText.addTextChangedListener(new TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence charSequence, int i, int i1, int i2) {}
@@ -275,6 +240,7 @@ public class MainActivity extends AppCompatActivity
             }
         });
 
+        // will change UI according to current user
         updateUserStatus();
     }
 
@@ -311,7 +277,7 @@ public class MainActivity extends AppCompatActivity
                     final Uri uri = data.getData();
                     Log.d(TAG, "Uri: " + uri.toString());
 
-                    FriendlyMessage tempMessage = new FriendlyMessage(mMessageEditText.getText().toString(),
+                    ImageInfo tempMessage = new ImageInfo(mMessageEditText.getText().toString(),
                             mUsername, mPhotoUrl, LOADING_IMAGE_URL, new SimpleDateFormat("yyyy.MM.dd.HH.mm.ss").format(new Date()));
 
                     if (requestCode == REQUEST_PUBLISH_IMAGE) {
@@ -350,7 +316,7 @@ public class MainActivity extends AppCompatActivity
                     @Override
                     public void onComplete(@NonNull Task<UploadTask.TaskSnapshot> task) {
                         if (task.isSuccessful()) {
-                            FriendlyMessage friendlyMessage = new FriendlyMessage(mMessageEditText.getText().toString(),
+                            ImageInfo friendlyMessage = new ImageInfo(mMessageEditText.getText().toString(),
                                             mUsername, mPhotoUrl, task.getResult().getMetadata().getDownloadUrl().toString(),
                                             new SimpleDateFormat("yyyy.MM.dd.HH.mm.ss").format(new Date())
                                     );
@@ -420,7 +386,7 @@ public class MainActivity extends AppCompatActivity
                         String imageUrl = (String) messageSnapshot.child("imageUrl").getValue();
                         String photoUrl = (String) messageSnapshot.child("photoUrl").getValue();
                         String timeStamp = (String) messageSnapshot.child("timeStamp").getValue();
-                        ImageInfo tInfo =  new ImageInfo(name, text, imageUrl, photoUrl, timeStamp);
+                        ImageInfo tInfo =  new ImageInfo(text, name, photoUrl, imageUrl, timeStamp);
                         privateList.add(tInfo);
                     }
                     updateContentList();

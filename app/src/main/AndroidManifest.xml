@@ -21,8 +21,8 @@
             </intent-filter>
         </activity>
         <activity android:name=".SignInActivity" />
-        <activity android:name=".LogInActivity" />
-        <activity android:name=".SignUpActivity" />
+        <activity android:name=".EmailSignInActivity" />
+        <activity android:name=".EmailSignUpActivity" />
     </application>
 
 </manifest>
